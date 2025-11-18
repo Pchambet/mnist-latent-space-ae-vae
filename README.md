@@ -1,139 +1,159 @@
 # Denoising Autoencoder & Variational Autoencoder on MNIST
-Understanding latent spaces, denoising, and generative modeling
 
-This repository contains a complete study of Convolutional Autoencoders (AE) and Variational Autoencoders (VAE) applied to the MNIST handwritten digits dataset.
-The goal is to explore:
+This project explores two fundamental deep learning architectures used to model and understand latent spaces:
 
-1. How an autoencoder can remove noise injected directly into the input images.
-2. How a VAE injects noise inside the latent space using the reparameterization trick.
+- A **Denoising Convolutional Autoencoder (AE)**, trained to reconstruct clean MNIST digits from heavily corrupted inputs.
+- A **Variational Autoencoder (VAE)**, trained to learn a smooth probabilistic latent space and generate new digit images.
 
-The project includes modular Python code, training scripts, generated figures, and a full LaTeX report answering all theoretical questions.
+The repository includes:
+- modular and well-structured PyTorch code,
+- full training pipelines for both AE and VAE,
+- high-quality visual results (reconstructions + generated samples),
+- and a detailed LaTeX report (in French) covering the theory and interpretation.
 
----------------------------------------------------------------------
+This project is designed to be both **educational** and **professional**:  
+readers can understand how noise shapes latent representations, how VAEs handle uncertainty, and how both models behave on a real dataset.
 
-PROJECT OVERVIEW
+## Project Structure
 
-Denoising Autoencoder (AE)
-- Takes a noisy MNIST digit and reconstructs a clean version.
-- Learns robust latent features and acts as a nonlinear denoising filter.
+The repository follows a clear, modular, and professional organization:
 
-Variational Autoencoder (VAE)
-- Encodes images as Gaussian distributions q(z|x) = N(mu(x), sigma^2(x)).
-- Samples latent vectors using z = mu + sigma * epsilon where epsilon ~ N(0,I).
-- Produces blurry reconstructions and average-like generated digits, as expected from a basic VAE.
-
-Everything is implemented in PyTorch with a clean modular structure.
-
----------------------------------------------------------------------
-
-PROJECT STRUCTURE
-
-.
-├── autoencodeur_mnist.py        (AE training script)
-├── vae_mnist.py                 (VAE training and sampling script)
+```.
+./
+├── README.md                    ← Project overview and instructions
+├── requirements.txt             ← Python dependencies  
+├── autoencodeur_mnist.py        ← Full training script for the denoising AE
+├── vae_mnist.py                 ← Full training + sampling script for the VAE
 ├── src/
-│   ├── ae_mnist.py              (Encoder, Decoder, AE classes)
-│   ├── vae_mnist.py             (VAE class, KL, reparameterization)
-│   ├── datasets.py              (Noisy MNIST dataset)
-│   └── utils.py                 (Training loops and plotting tools)
-├── figures/
+│   ├── ae_mnist.py              ← Encoder, Decoder, and Autoencoder classes
+│   ├── vae_mnist.py             ← VAE class, KL divergence, reparameterization
+│   ├── datasets.py              ← Custom MNIST dataset with injected noise
+│   └── utils.py                 ← Training loops, plotting helpers, metrics
+├── figures/                     ← All generated images (AE/VAE outputs)
 │   ├── ae_denoising_val.png
 │   ├── ae_denoising_test.png
 │   ├── vae_reconstructions.png
 │   └── vae_generated_samples.png
 └── report/
-    └── TP_AE_VAE_Chambet.pdf    (Full LaTeX report)
+    └── TP_AE_VAE_Chambet.pdf    ← Complete theoretical + experimental report
+```
 
----------------------------------------------------------------------
+Each component is isolated to make the code easy to read, modify, and reuse.
+Training scripts call the models located in /src/, and store visual outputs in /figures/.
 
-1. DENOISING AUTOENCODER (AE)
+## Installation
 
-Objective:
-Learn: noisy_input → clean_target
-The AE must learn digit structure instead of copying pixels.
+This project uses Python 3 and PyTorch.  
+You can run everything inside a virtual environment.
 
-Results:
-- Strong noise removal
-- Smooth and clean reconstructions
-- Low train/validation MSE (~0.02)
-- Latent space becomes noise-invariant
-
-See the figures:
-- ae_denoising_val.png
-- ae_denoising_test.png
-
----------------------------------------------------------------------
-
-2. VARIATIONAL AUTOENCODER (VAE)
-
-Objective:
-Learn a probabilistic latent space.
-
-Why reconstructions are blurry:
-z = mu + sigma * epsilon includes random noise.
-The model reconstructs average plausible digits, not exact images.
-
-Why generated samples look similar:
-- Small latent dimension (16)
-- Strong KL regularization
-- Only 20 epochs of training
-- High compression
-
-→ The model collapses to a typical MNIST mode (common VAE behavior).
-
-See:
-- vae_reconstructions.png
-- vae_generated_samples.png
-
----------------------------------------------------------------------
-
-3. REPORT (LATEX)
-
-The PDF report includes:
-- AE vs VAE explanation
-- Effect of noise in inputs vs latent space
-- Reparameterization trick
-- KL divergence
-- Iterative reconstructions
-- Answers to all theoretical questions
-
----------------------------------------------------------------------
-
-4. INSTALLATION
-
-Create virtual environment:
+### 1. Create and activate a virtual environment
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate    # (On Windows: .venv\Scripts\activate)
+
+### 2. Install dependencies
 pip install -r requirements.txt
 
-Run the AE:
+## Usage
+
+### Train the Denoising Autoencoder
 python3 autoencodeur_mnist.py
 
-Run the VAE:
+### Train the Variational Autoencoder + generate samples
 python3 vae_mnist.py
 
----------------------------------------------------------------------
+All generated figures (AE reconstructions, VAE reconstructions, VAE samples)  
+are automatically saved inside the /figures/ directory.
 
-EDUCATIONAL PURPOSE
+## Denoising Autoencoder (AE)
 
-This project is designed to be:
-- Academic (clear theory)
-- Pedagogical (figures and explanations)
-- Professional (clean modular PyTorch code)
+The denoising autoencoder is trained to recover a clean MNIST digit from a heavily corrupted version of the same image.
+Instead of learning to copy pixels, the model must learn the *structural essence* of each digit (strokes, contours, shapes).
 
-It demonstrates skills in:
-- CNNs
-- Image denoising
-- Generative modeling
-- Latent space structure
-- PyTorch engineering
+### Objective
+noisy_input  →  clean_output
 
----------------------------------------------------------------------
+### What the AE learns
+- A robust latent representation that ignores high-frequency noise.
+- A nonlinear denoising function that preserves digit identity.
+- A smooth reconstruction space where noise is naturally filtered out.
 
-AUTHOR
+### Results
+The model removes most of the injected noise and outputs clean, stable digits.
+Validation and test losses remain low (≈ 0.02), confirming good generalization.
 
-Pierre Chambet
-Télécom SudParis / Institut Polytechnique de Paris
-Master’s student in Data Science and Applied Mathematics
+See:
+- figures/ae_denoising_val.png
+- figures/ae_denoising_test.png
 
----------------------------------------------------------------------
+## Variational Autoencoder (VAE)
+
+The VAE does not encode an image into a single latent vector.
+Instead, it learns a *distribution* for each input:
+
+    q(z | x) = N( μ(x), σ²(x) )
+
+A latent sample is obtained through the reparameterization trick:
+
+    z = μ + σ · ε       with ε ~ N(0, I)
+
+This design forces the latent space to be smooth, continuous, and generative.
+
+### What this implies
+- Reconstructions are naturally **blurrier** than in a classic AE.
+- The model learns plausible *average digits*, not pixel-perfect copies.
+- The KL divergence regularizes the latent space and prevents memorization.
+
+### Results
+- Reconstructions: recognizable but visibly smoothed.
+- Generated samples: similar “mean-digit” shapes (expected from a basic VAE with strong KL + small latent dimension).
+
+See:
+- figures/vae_reconstructions.png
+- figures/vae_generated_samples.png
+
+## Report Overview
+
+The full report (written in French) provides a complete theoretical and experimental analysis of the project.
+
+It covers:
+- the structure and role of latent spaces,
+- the difference between denoising AEs and VAEs,
+- the mathematical foundations of the VAE (KL divergence, latent sampling),
+- the reparameterization trick and why it is necessary,
+- the effect of noise in the input vs. noise in the latent space,
+- reconstruction behavior across training sets,
+- iterative reconstructions (successive applications of the model),
+- and detailed answers to all assignment questions.
+
+You can find the report here:
+report/TP_AE_VAE_Chambet.pdf
+
+## Educational & Professional Purpose
+
+This project was designed to be both a learning tool and a professional showcase.
+
+### Educational value
+- Understand how neural networks learn internal representations.
+- Explore denoising, latent spaces, KL regularization, and generative modeling.
+- Visualize how different architectures behave on real data.
+
+### Professional value
+- Clean, modular, and well-structured PyTorch code.
+- Clear training pipelines and reproducible experiments.
+- High-quality figures and a rigorous written report.
+- Demonstrates practical skills in:
+  - convolutional networks,
+  - autoencoders,
+  - VAEs and probabilistic modeling,
+  - PyTorch engineering and dataset handling,
+  - interpretation of deep learning models.
+
+This repository is meant to be readable, reusable, and valuable for both students and professionals.
+
+## Author
+
+**Pierre Chambet**  
+Télécom SudParis — Institut Polytechnique de Paris  
+Master’s student in Data Science & Applied Mathematics
+
+Feel free to reach out for collaboration, discussion, or feedback.
