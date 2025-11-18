@@ -24,6 +24,15 @@ The repository includes:
 This project is designed to be both **educational** and **professional**:  
 readers can understand how noise shapes latent representations, how VAEs handle uncertainty, and how both models behave on a real dataset.
 
+Below is an example of the denoising autoencoder in action.  
+The model receives a heavily corrupted MNIST digit (top row),  
+is trained to recover the clean target (middle row),  
+and produces a clean reconstruction (bottom row).
+
+<p align="center">
+  <img src="figures/ae_denoising_val.jpg" width="80%" />
+</p>
+
 ## Project Structure
 
 The repository follows a clear, modular, and professional organization:
