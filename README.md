@@ -1,4 +1,14 @@
-# Denoising Autoencoder & Variational Autoencoder on MNIST
+<p align="center">
+  <h1>Denoising Autoencoder & Variational Autoencoder</h1>
+  <p><em>MNIST • Latent Spaces • Generative Modeling</em></p>
+
+  <img src="https://img.shields.io/badge/PyTorch-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white" />
+  <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" />
+  <img src="https://img.shields.io/badge/Deep%20Learning-000000?style=for-the-badge&logo=google&logoColor=white" />
+  <img src="https://img.shields.io/badge/MNIST-Digit%20Dataset-orange?style=for-the-badge" />
+</p>
+
+---
 
 This project explores two fundamental deep learning architectures used to model and understand latent spaces:
 
