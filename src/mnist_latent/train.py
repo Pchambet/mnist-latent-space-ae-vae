@@ -1,6 +1,6 @@
 """Training loops for the autoencoder and the VAE, with checkpoint selection on validation.
 
-The original lab kept ``best_state = model.state_dict()``, which is a live view of the
+The original implementation kept ``best_state = model.state_dict()``, which is a live view of the
 parameters: the "best" checkpoint silently became the last epoch. Here the best state
 is deep-copied, and the epoch it came from is recorded.
 """
@@ -102,7 +102,7 @@ def train_ae(
 ) -> History:
     """Fit ``model(input) ~ x_clean`` under per-pixel MSE.
 
-    Inputs are either a fixed corrupted copy ``x_in`` (the lab protocol: one noise draw
+    Inputs are either a fixed corrupted copy ``x_in`` (the original protocol: one noise draw
     per image for the whole run) or produced on the fly by ``corrupt`` (fresh noise at
     every step, which the model cannot memorise).
     """

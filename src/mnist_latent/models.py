@@ -1,6 +1,6 @@
 """Convolutional autoencoder and VAE, in their original ("legacy") and corrected forms.
 
-The legacy variants reproduce the lab code exactly: every decoder block, including the
+The legacy variants reproduce the original architecture exactly: every decoder block, including the
 last one, is ConvTranspose -> BatchNorm -> LeakyReLU. That last block is the first bug:
 the output image is batch-normalised and unbounded, so the network spends capacity
 undoing a normalisation instead of predicting pixel intensities in [0, 1]. The fixed

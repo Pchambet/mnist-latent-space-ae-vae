@@ -36,6 +36,7 @@ def test_reparameterize_is_differentiable_and_has_the_right_moments():
     mu = torch.full((20000, 1), 2.0, requires_grad=True)
     logvar = torch.full((20000, 1), 2 * torch.log(torch.tensor(3.0)).item(), requires_grad=True)
     z = VAE.reparameterize(mu, logvar)
-    assert abs(float(z.mean()) - 2.0) < 0.1 and abs(float(z.std()) - 3.0) < 0.1
+    zd = z.detach()
+    assert abs(float(zd.mean()) - 2.0) < 0.1 and abs(float(zd.std()) - 3.0) < 0.1
     z.sum().backward()
     assert mu.grad is not None and logvar.grad is not None

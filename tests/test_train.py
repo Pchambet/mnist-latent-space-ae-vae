@@ -47,7 +47,7 @@ def test_vae_elbo_training_decreases_the_bound_and_uses_the_latent():
 
 
 def test_legacy_objective_collapses_the_posterior():
-    """With the lab loss the KL term dominates: the posterior is pushed onto the prior."""
+    """With the original loss the KL term dominates: the posterior is pushed onto the prior."""
     x, val = _templates(512), _templates(256, seed=1)
     model = VAE(latent_dim=4, head="legacy")
     hist = train_vae(model, x, val, objective="legacy", epochs=6, batch_size=32, lr=3e-3)

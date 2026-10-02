@@ -1,14 +1,20 @@
 """VAE objectives, written per image so that their scales are explicit.
 
-The second bug of the original lab lives here. Its loss was
+The second bug of the original implementation lives here. Its loss was
 
-    mean_over_pixels((x_hat - x)^2) + beta * KL(q(z|x) || p(z)),   beta = 1,
+    mean_over_pixels((x_hat - x)^2) + KL(q(z|x) || p(z)),
 
 i.e. a reconstruction term averaged over the 784 pixels next to a KL term summed over
-the latent dimensions. Rewritten on a per-image scale, that is the KL term weighted
-784 times more than a per-image squared error: a beta-VAE with beta ~ 784, far past
-the point where the optimum is to ignore the input (posterior collapse). The fix is to
-optimise the actual evidence lower bound, with both terms summed per image.
+the latent dimensions. On a per-image scale, the KL term is weighted 784 times more
+than the per-image squared error; equivalently, the decoder is a Gaussian with a tiny
+fixed variance. The exact "effective beta" depends on that variance, so the pipeline
+does not rely on it: it measures the consequence (how many latent units stay active).
+The fix is to optimise the actual evidence lower bound, with both terms summed per image.
+
+Pixels are grey levels in [0, 1], not binarised, so the Bernoulli "likelihood" is a
+cross-entropy rather than a normalised density. ELBO and IWAE values in nats are
+therefore comparable between models of this repository only, not with the ~80-90 nats
+usually reported on binarised MNIST.
 """
 
 from __future__ import annotations
@@ -41,7 +47,7 @@ def negative_elbo(
 def legacy_loss(
     x: torch.Tensor, x_hat: torch.Tensor, mu: torch.Tensor, logvar: torch.Tensor, beta: float = 1.0
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """The original lab objective, kept verbatim to reproduce its behaviour."""
+    """The original objective, kept verbatim to reproduce its behaviour."""
     recon = F.mse_loss(x_hat, x)
     kl = kl_divergence(mu, logvar).mean()
     return recon + beta * kl, recon.detach(), kl.detach()
@@ -52,8 +58,9 @@ def iwae_bound(model, x: torch.Tensor, k: int = 64) -> torch.Tensor:
     """Importance-weighted lower bound on log p(x) (Burda et al., 2016), per image, in nats.
 
     log p(x) >= log (1/k) sum_i p(x|z_i) p(z_i) / q(z_i|x),  z_i ~ q(z|x).
-    It is tighter than the ELBO (k=1) and converges to log p(x) as k grows, so it is the
-    fairer number to report as a test log-likelihood. Requires the Bernoulli head.
+    It is tighter than the ELBO (k=1) and converges to log p(x) as k grows. On grey-level
+    pixels it bounds a cross-entropy, not a true log-likelihood (see the module docstring),
+    so it is used to compare models within this repository. Requires the Bernoulli head.
     """
     mu, logvar = model.encode(x)
     std = torch.exp(0.5 * logvar)

@@ -1,6 +1,6 @@
 """MNIST loading, the fixed train/val/test split, and the input-noise model.
 
-Everything is held as in-memory float tensors in [0, 1]: MNIST is 55 MB as float32,
+Everything is held as in-memory float tensors in [0, 1]: MNIST is about 220 MB as float32,
 and skipping per-item PIL transforms makes CPU training several times faster.
 """
 
@@ -63,10 +63,10 @@ def load_splits(root: Path = RAW_DIR, seed: int = 0) -> dict[str, Split]:
 def add_uniform_noise(x: torch.Tensor, amplitude: float, seed: int) -> torch.Tensor:
     """Corrupt images with additive U(-amplitude/2, amplitude/2) noise, clipped to [0, 1].
 
-    This is the corruption of the original lab (``noise_amplitude * (U(0,1) - 0.5)``).
-    Clipping matters: on MNIST most pixels sit at exactly 0 or 1, so half of the noise is
-    clipped away and the noisy input is much closer to the clean image than the nominal
-    noise variance suggests. The noise is drawn once per split with a fixed seed, so every
+    This is the corruption of the original implementation (``a * (U(0,1) - 0.5)``).
+    Clipping matters: about 80% of MNIST pixels are exactly 0, so half of the noise on
+    them is clipped away and the noisy input is much closer to the clean image than the
+    nominal noise variance a^2 / 12 suggests. The noise is drawn once per split with a fixed seed, so every
     model is evaluated on the very same corrupted test images.
     """
     g = torch.Generator().manual_seed(seed)
