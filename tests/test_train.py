@@ -1,10 +1,12 @@
 """Training loops on synthetic data where the clean signal is known exactly."""
 
+import copy
+
 import torch
 
 from mnist_latent.data import add_uniform_noise
 from mnist_latent.models import AE, VAE
-from mnist_latent.train import train_ae, train_vae
+from mnist_latent.train import _fit, train_ae, train_vae
 
 
 def _templates(n: int, seed: int = 0) -> torch.Tensor:
@@ -28,14 +30,30 @@ def test_denoiser_recovers_the_clean_templates_better_than_doing_nothing():
 
 
 def test_best_checkpoint_is_the_one_restored():
-    clean, val_clean = _templates(256), _templates(128, seed=1)
-    noisy, val_noisy = add_uniform_noise(clean, 1.0, 0), add_uniform_noise(val_clean, 1.0, 1)
+    """Validation loss goes 3, 1, 2, 4: the weights of epoch 2 must come back, not epoch 4's.
+
+    A live ``model.state_dict()`` (the original bug) would silently hold the last weights.
+    """
+    torch.manual_seed(0)
     model = AE()
-    hist = train_ae(model, clean, val_noisy, val_clean, x_in=noisy, epochs=4, batch_size=32)
-    with torch.no_grad():
-        val = float(torch.nn.functional.mse_loss(model(val_noisy), val_clean))
-    assert abs(val - min(hist.val)) < 1e-6
-    assert hist.val[hist.best_epoch - 1] == min(hist.val)
+    x = _templates(64)
+    val_losses = iter([3.0, 1.0, 2.0, 4.0])
+    snapshots = []
+
+    def step(idx):
+        loss = (model(x[idx]) - x[idx]).pow(2).mean()
+        return loss, loss.detach(), torch.zeros(())
+
+    def evaluate():
+        snapshots.append(copy.deepcopy(model.state_dict()))
+        v = next(val_losses)
+        return v, v, 0.0
+
+    hist = _fit(model, step, len(x), evaluate, epochs=4, batch_size=16, lr=1e-2, seed=0)
+    assert hist.best_epoch == 2
+    restored = model.state_dict()
+    assert all(torch.equal(restored[k], snapshots[1][k]) for k in restored)
+    assert not all(torch.equal(restored[k], snapshots[3][k]) for k in restored)
 
 
 def test_vae_elbo_training_decreases_the_bound_and_uses_the_latent():
