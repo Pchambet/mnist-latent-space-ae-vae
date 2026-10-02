@@ -13,7 +13,7 @@ Denoising autoencoder
                      same training; it differs in depth and width, not only in code size
 Variational autoencoder
     vae_original     original loss (pixel-mean MSE + summed KL)
-    vae_elbo_b{k}    Bernoulli ELBO with KL weight beta = k (beta = 1 is the true ELBO)
+    vae_elbo_b{k}    Bernoulli ELBO with KL weight beta = k (beta = 1 is the unweighted bound)
     vae_elbo_2d      two-dimensional latent, for the latent-space map
 
 Every model gets the same initial random state (``Config.seed``) right before it is
@@ -24,6 +24,7 @@ the cache.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -175,6 +176,7 @@ def _train_classifier(
     loss_fn = nn.CrossEntropyLoss()
 
     def fit() -> History:
+        t0 = time.perf_counter()
         torch.manual_seed(cfg.seed)
         opt = torch.optim.Adam(clf.parameters(), lr=1e-3)
         gen = torch.Generator().manual_seed(cfg.seed)
@@ -187,7 +189,7 @@ def _train_classifier(
                 loss.backward()
                 opt.step()
         clf.eval()
-        return History(best_epoch=3)
+        return History(best_epoch=3, seconds=time.perf_counter() - t0)
 
     _cached("digit_classifier", clf, fit, retrain)
     clf.eval()

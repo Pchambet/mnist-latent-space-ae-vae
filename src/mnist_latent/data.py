@@ -12,7 +12,6 @@ from pathlib import Path
 import torch
 
 RAW_DIR = Path("data/raw")
-SOURCE_URL = "https://yann.lecun.com/exdb/mnist/"
 N_VAL = 10_000
 
 
