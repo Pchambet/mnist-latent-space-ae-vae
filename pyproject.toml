@@ -1,7 +1,7 @@
 [project]
 name = "mnist-latent"
 version = "0.2.0"
-description = "Denoising autoencoder and VAE on MNIST, audited against trivial baselines: two bugs found, fixed and measured."
+description = "Denoising AE and VAE on MNIST against trivial baselines: a 16-d code loses to a median filter, a mis-scaled VAE loss leaves the latent unused."
 readme = "README.md"
 authors = [{ name = "Pierre Chambet", email = "pierrechambet@gmail.com" }]
 license = "MIT"

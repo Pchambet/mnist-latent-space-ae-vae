@@ -38,7 +38,7 @@ def bernoulli_nll(x: torch.Tensor, logits: torch.Tensor) -> torch.Tensor:
 def negative_elbo(
     x: torch.Tensor, logits: torch.Tensor, mu: torch.Tensor, logvar: torch.Tensor, beta: float = 1.0
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Batch-mean of reconstruction NLL + beta * KL, in nats per image (beta=1: the true -ELBO)."""
+    """Batch-mean of reconstruction NLL + beta * KL, in nats per image (beta=1: the unweighted -ELBO)."""
     recon = bernoulli_nll(x, logits).mean()
     kl = kl_divergence(mu, logvar).mean()
     return recon + beta * kl, recon.detach(), kl.detach()

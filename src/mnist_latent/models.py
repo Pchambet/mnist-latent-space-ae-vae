@@ -1,12 +1,12 @@
 """Convolutional autoencoder and VAE, in their original ("legacy") and corrected forms.
 
 The legacy variants reproduce the original architecture exactly: every decoder block, including the
-last one, is ConvTranspose -> BatchNorm -> LeakyReLU. That last block is the first bug:
-the output image is batch-normalised and unbounded, so the network spends capacity
-undoing a normalisation instead of predicting pixel intensities in [0, 1]. The fixed
-variants only change the output head (a plain ConvTranspose producing logits, squashed
-by a sigmoid); the rest of the architecture is identical, so differences in the results
-are attributable to the head and the loss, not to extra capacity.
+last one, is ConvTranspose -> BatchNorm -> LeakyReLU, so the output image is batch-normalised
+and unbounded instead of a pixel intensity in [0, 1]. The fixed variants only change the
+output head (a plain ConvTranspose producing logits, squashed by a sigmoid); the rest of the
+architecture is identical, so the gap between the two isolates the effect of the head (and,
+for the VAE, of the loss that goes with it). For the denoising AE that gap is small: the
+16-dim code of this architecture, not its head, is what limits it.
 """
 
 from __future__ import annotations

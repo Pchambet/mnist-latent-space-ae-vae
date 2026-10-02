@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auditing an AE and a VAE</title>
+<meta name="description" content="A denoising autoencoder and a VAE on MNIST, measured against trivial baselines: a 16-d-code denoiser loses to a median filter, and a mis-scaled VAE loss leaves the latent space unused.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="$plotly"></script>
+<style>
+:root {
+  --bg: #ffffff; --ink: #0f172a; --muted: #64748b; --rule: #e2e8f0; --panel: #f8fafc;
+  --teal: #0d9488; --amber: #d97706; --slate: #64748b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1120; --ink: #e2e8f0; --muted: #94a3b8; --rule: #1e293b; --panel: #111827;
+    --teal: #2dd4bf; --amber: #f59e0b; --slate: #94a3b8;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b1120; --ink: #e2e8f0; --muted: #94a3b8; --rule: #1e293b; --panel: #111827;
+  --teal: #2dd4bf; --amber: #f59e0b; --slate: #94a3b8;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.65 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+main { max-width: 860px; margin: 0 auto; padding: 48px 16px 80px; }
+h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 8px; letter-spacing: -0.01em; }
+h2 { font-size: 1.3rem; margin: 48px 0 8px; padding-top: 16px; border-top: 1px solid var(--rule); }
+h3 { font-size: 1.05rem; margin: 28px 0 4px; }
+.lede { font-size: 1.1rem; color: var(--muted); margin: 0 0 24px; }
+.meta { font-size: 0.85rem; color: var(--muted); }
+a { color: var(--teal); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 24px 0; }
+.kpi { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; }
+.kpi b { display: block; font-size: 1.2rem; line-height: 1.2; }
+.kpi span { font-size: 0.85rem; color: var(--muted); }
+.chart { width: 100%; height: 420px; margin: 8px 0 4px; }
+.caption { font-size: 0.85rem; color: var(--muted); margin: 0 0 20px; }
+figure { margin: 16px 0 24px; }
+figure img { width: 100%; height: auto; border-radius: 8px; background: #fff; }
+.scroll { overflow-x: auto; margin: 12px 0 20px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; }
+code { font-size: 0.9em; background: var(--panel); padding: 1px 5px; border-radius: 4px; }
+pre { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; overflow-x: auto; }
+footer { margin-top: 56px; font-size: 0.85rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+<p class="meta">Representation learning · model validation · MNIST</p>
+<h1>A denoiser that loses to a median filter, and a VAE that ignores its latent space</h1>
+<p class="lede">A convolutional denoising autoencoder and a variational autoencoder from an earlier
+implementation, re-audited against the baselines any model should beat. The denoiser is limited by its
+16-dimensional code: fixing its output head barely helps, a wider network does. The VAE is broken by a
+mis-scaled loss: the correct objective brings its latent space back. Every effect is measured on the
+MNIST test set.</p>
+
+<div class="kpis">
+  <div class="kpi"><b>$orig_mse vs $median_mse</b><span>test MSE at a = $ref_amp: original AE (16-d code) vs a 3×3 median filter (noisy input: $ident_mse)</span></div>
+  <div class="kpi"><b>$wide_mse</b><span>test MSE at a = $ref_amp: a wider AE with a 128-d code</span></div>
+  <div class="kpi"><b>$leg_au / $latent_dim → $fix_au / $latent_dim</b><span>active latent units: original VAE loss → ELBO (β = 1)</span></div>
+  <div class="kpi"><b>$leg_score → $fix_score</b><span>classifier score of samples from the prior (real test digits: $real_score)</span></div>
+</div>
+
+<figure>$img_hero</figure>
+
+<h2>The question</h2>
+<p>A denoiser is useful only if its output is closer to the clean image than its input is. A VAE
+latent is useful only if the model actually encodes information in it. Both checks are cheap, and
+neither was in the earlier implementation. Running them turns two figures that "look fine" into two
+measurable failures: one comes from the architecture, the other from a bug in the loss.</p>
+
+<h2>Setup</h2>
+<ul>
+<li><b>Data:</b> MNIST, official 60k/10k split; the last 10k images of a seeded shuffle of the training set are held out for checkpoint selection. The test set is never used for selection.</li>
+<li><b>Noise:</b> additive U(−a/2, a/2) noise, clipped to [0, 1]. About 80% of MNIST pixels are exactly 0, so clipping removes half of the noise on them: at a = $ref_amp doing nothing already scores MSE $ident_mse.</li>
+<li><b>Baselines:</b> the noisy input itself and a 3×3 median filter, scored on the same corrupted test images as every model.</li>
+<li><b>Models:</b> the original 5-layer convolutional AE and VAE, with (a) the original output head, BatchNorm + LeakyReLU on the output image, and (b) a sigmoid head; a "blind" narrow AE ($params_narrow parameters, 16-d code) and a wider 4-layer AE ($params_wide parameters, 128-d code), both trained on fresh noise of random amplitude up to $max_amp; VAEs trained on the original loss and on the Bernoulli ELBO with β ∈ {1, 4, 16, 64}, plus a 2-D latent.</li>
+<li><b>Protocol:</b> $epochs epochs of Adam (lr 10⁻³, batch 128), best validation checkpoint, one seed, run on $device. The earlier implementation used 10k training images, batch 512, 20 epochs and, through a bug, the last epoch's weights; only its architecture, output head, noise and loss are reproduced here.</li>
+</ul>
+
+<h2>Failure 1: a 16-dimensional code, not the output head</h2>
+<p>Every decoder block of the original AE, the last one included, was ConvTranspose → BatchNorm → LeakyReLU,
+so the output image is normalised per batch and unbounded. That is a real bug, but a small one. Retrained under
+the protocol above, the original AE scores $orig_mse at a = $ref_amp, $orig_vs_identity
+($orig_diff MSE, 95% CI $orig_ci over test images). With a sigmoid head the same network scores $head_mse
+($head_gain), $head_vs_median the 3×3 median filter ($median_mse).</p>
+<p>The limit is the bottleneck. On clean inputs, every AE with the original 16-d code has an error floor of
+$floor_16 MSE, against $ident_mse for the noisy input at a = $ref_amp. A wider 4-layer network with a 128-d
+code scores $wide_mse at a = $ref_amp, $wide_vs_median the median filter.</p>
+$ae_table
+
+<h3>Across noise levels</h3>
+<div id="c-denoise" class="chart"></div>
+<p class="caption">Test MSE per pixel against noise amplitude. Hover for values. The two "original" models were trained at a = $ref_amp only.</p>
+$curve_table
+<p>The blind AEs have an error floor on clean inputs (MSE $floor_narrow for the narrow one, $floor_wide for the wide one): at low noise, returning the input is better than reconstructing it. Their advantage grows with the noise.</p>
+<figure>$img_examples</figure>
+
+<h2>Failure 2: a KL term weighted 784 times too much</h2>
+<p>The original VAE loss averaged the squared error over the 784 pixels but summed the KL term over latent
+dimensions. Per image, the KL term is weighted 784 times more than the squared error (equivalently, a Gaussian
+decoder with a tiny fixed variance). The optimum is then to ignore the input: posterior collapse. Measured on the
+test set, the original loss leaves <b>$leg_au of $latent_dim</b> latent units active (KL $leg_kl nats per image);
+the ELBO (β = 1) keeps <b>$fix_au of $latent_dim</b> (KL $fix_kl nats). A linear probe reads the digit from a sampled
+code with $leg_probe accuracy under the original loss and $fix_probe under the ELBO.</p>
+<div id="c-kl" class="chart"></div>
+<p class="caption">Validation KL per epoch. The original loss drives it to zero within the first epochs.</p>
+<figure>$img_recon</figure>
+$vae_table
+<p class="caption">* Bernoulli cross-entropy bounds on grey-level (not binarised) pixels: comparable between rows of
+this table only, not with the ~80–90 nats usually reported on binarised MNIST. Sample score: exp E[KL(p(y|x) ‖ p(y))]
+from a small CNN judge ($clf_acc test accuracy) on 10,000 samples; 1 = every sample looks the same, 10 = confident
+and evenly spread digits.</p>
+
+<h3>Turning the KL weight up on purpose</h3>
+<div id="c-beta" class="chart"></div>
+<p class="caption">Active units and sample score against β (log scale). At β = $beta_hi, $beta_hi_au units stay active and the sample score is $beta_hi_score.</p>
+
+<h3>A two-dimensional latent space</h3>
+<figure>$img_latent</figure>
+<p class="caption">With two latent units, a linear probe reads the digit from a sampled code with $probe_2d test accuracy.</p>
+
+<h2>Limitations</h2>
+<ul>
+<li>One training seed on $device. Confidence intervals cover test-set sampling only, not training randomness; MPS is not bit-for-bit deterministic, so CPU or CUDA reruns match up to small numerical differences.</li>
+<li>$epochs epochs per model, no tuning. The original AE was retrained under this protocol, not the earlier one (10k images, 20 epochs, last-epoch weights).</li>
+<li>The narrow and wide AEs differ in depth and width as well as code size; the comparison is between two networks, not a clean bottleneck ablation.</li>
+<li>The sample score depends on a 3-epoch judge CNN; it ranks models here and is not comparable with scores published elsewhere.</li>
+<li>ELBO and IWAE values use a Bernoulli likelihood on grey-level pixels (see the note under the table).</li>
+</ul>
+
+<footer>Built by <a href="https://github.com/Pchambet">Pierre Chambet</a> — decision science for operations under uncertainty.
+Source and reproduction: <a href="$repo">$repo</a>. Generated $generated.</footer>
+</main>
+<script>
+(function () {
+  const css = getComputedStyle(document.documentElement);
+  const v = (name) => css.getPropertyValue(name).trim();
+  const swap = { "#0d9488": v("--teal"), "#d97706": v("--amber"), "#64748b": v("--slate") };
+  const recolour = (traces) => traces.map((t) => {
+    if (t.line && t.line.color) t.line.color = swap[t.line.color] || t.line.color;
+    if (t.marker && t.marker.color) t.marker.color = swap[t.marker.color] || t.marker.color;
+    return t;
+  });
+  const axis = (a) => Object.assign({}, a || {}, { gridcolor: v("--rule"), linecolor: v("--rule"), fixedrange: true });
+  const theme = (layout) => {
+    const out = Object.assign({}, layout, {
+      paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+      font: { family: "Inter, system-ui, sans-serif", color: v("--ink"), size: 12 },
+      hoverlabel: { font: { family: "Inter, system-ui, sans-serif" } },
+    });
+    out.title = null;
+    out.margin = { l: 56, r: 56, t: 16, b: 56 };
+    out.xaxis = axis(layout.xaxis);
+    out.yaxis = axis(layout.yaxis);
+    if (layout.yaxis2) out.yaxis2 = Object.assign(axis(layout.yaxis2), { showgrid: false });
+    return out;
+  };
+  const config = { displayModeBar: false, responsive: true };
+  const charts = { "c-denoise": $c_denoise, "c-kl": $c_kl, "c-beta": $c_beta };
+  for (const [id, fig] of Object.entries(charts)) {
+    Plotly.newPlot(id, recolour(fig.data), theme(fig.layout), config);
+  }
+})();
+</script>
+</body>
+</html>
