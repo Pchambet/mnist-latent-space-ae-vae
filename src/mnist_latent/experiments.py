@@ -3,15 +3,22 @@
 Experiments
 -----------
 Denoising autoencoder
-    ae_lab_legacy   original architecture and output head, lab noise (amplitude 0.5, one
-                    fixed draw per image)
-    ae_lab_sigmoid  same, with the corrected sigmoid output head
-    ae_blind_16     original 16-dim bottleneck, trained on fresh noise of random amplitude
-    ae_blind_128    wider 128-dim bottleneck, same training
+    ae_original      original architecture and output head (BatchNorm on the output
+                     image), original noise protocol (amplitude 0.5, one fixed draw per
+                     image), retrained here with the protocol below
+    ae_fixed_head    same, with the corrected sigmoid output head
+    ae_blind_narrow  original 5-layer network (16-dim code), trained on fresh noise of
+                     random amplitude
+    ae_blind_wide    a different 4-layer network (32x2x2 = 128-dim code, more parameters),
+                     same training; it differs in depth and width, not only in code size
 Variational autoencoder
-    vae_legacy      original loss (pixel-mean MSE + summed KL)
-    vae_elbo_b{k}   Bernoulli ELBO with KL weight beta = k (beta = 1 is the true ELBO)
-    vae_elbo_2d     two-dimensional latent, for the latent-space map
+    vae_original     original loss (pixel-mean MSE + summed KL)
+    vae_elbo_b{k}    Bernoulli ELBO with KL weight beta = k (beta = 1 is the true ELBO)
+    vae_elbo_2d      two-dimensional latent, for the latent-space map
+
+Every model gets the same initial random state (``Config.seed``) right before it is
+built, so its weights do not depend on which other models were trained or loaded from
+the cache.
 """
 
 from __future__ import annotations
@@ -41,7 +48,7 @@ class Config:
     batch_size: int = 128
     lr: float = 1e-3
     seed: int = 0
-    lab_amplitude: float = 0.5
+    ref_amplitude: float = 0.5
     max_amplitude: float = 2.0
     eval_amplitudes: tuple[float, ...] = (0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0)
     latent_dim: int = 16
@@ -96,13 +103,13 @@ def run_ae(splits: dict[str, Split], cfg: Config, device: torch.device, retrain:
     models: dict[str, AE] = {}
     histories: dict[str, dict] = {}
 
-    lab_tr = add_uniform_noise(tr.x, cfg.lab_amplitude, seed=1).to(device)
-    lab_va = add_uniform_noise(va.x, cfg.lab_amplitude, seed=2).to(device)
-    for head in ("legacy", "sigmoid"):
-        name = f"ae_lab_{head}"
+    ref_tr = add_uniform_noise(tr.x, cfg.ref_amplitude, seed=1).to(device)
+    ref_va = add_uniform_noise(va.x, cfg.ref_amplitude, seed=2).to(device)
+    for name, head in (("ae_original", "legacy"), ("ae_fixed_head", "sigmoid")):
+        torch.manual_seed(cfg.seed)
         m = models[name] = AE(head=head).to(device)
         histories[name] = _cached(
-            name, m, lambda m=m: train_ae(m, ctr, lab_va, cva, x_in=lab_tr, **kw), retrain
+            name, m, lambda m=m: train_ae(m, ctr, ref_va, cva, x_in=ref_tr, **kw), retrain
         )
 
     blind_va = _fixed_random_amplitude_noise(va.x, cfg.max_amplitude, seed=3).to(device)
@@ -110,7 +117,8 @@ def run_ae(splits: dict[str, Split], cfg: Config, device: torch.device, retrain:
     def corrupt(x: torch.Tensor) -> torch.Tensor:
         return random_amplitude_noise(x, cfg.max_amplitude)
 
-    for name, channels in (("ae_blind_16", None), ("ae_blind_128", cfg.wide_channels)):
+    for name, channels in (("ae_blind_narrow", None), ("ae_blind_wide", cfg.wide_channels)):
+        torch.manual_seed(cfg.seed)
         m = AE(head="sigmoid", **({"channels": channels} if channels else {})).to(device)
         models[name] = m
         histories[name] = _cached(
@@ -119,7 +127,7 @@ def run_ae(splits: dict[str, Split], cfg: Config, device: torch.device, retrain:
 
     # Every model and baseline sees the very same corrupted test images at each level.
     curve: dict[str, list[float]] = {k: [] for k in ["identity", "median_3x3", *models]}
-    lab: dict[str, dict] = {}
+    at_ref: dict[str, dict] = {}
     examples: dict[str, np.ndarray] = {}
     for i, amp in enumerate(cfg.eval_amplitudes):
         noisy = add_uniform_noise(te.x, amp, seed=100 + i)
@@ -128,10 +136,10 @@ def run_ae(splits: dict[str, Split], cfg: Config, device: torch.device, retrain:
         errs = {k: M.per_image_mse(v, te.x) for k, v in outs.items()}
         for k, e in errs.items():
             curve[k].append(float(e.mean()))
-        if amp == cfg.lab_amplitude:
+        if amp == cfg.ref_amplitude:
             for k, e in errs.items():
                 mean, lo, hi = M.paired_bootstrap_ci(e, errs["identity"])
-                lab[k] = {
+                at_ref[k] = {
                     "mse": float(e.mean()),
                     "psnr_db": M.psnr(e),
                     "mse_minus_identity": mean,
@@ -145,7 +153,7 @@ def run_ae(splits: dict[str, Split], cfg: Config, device: torch.device, retrain:
     return {
         "amplitudes": list(cfg.eval_amplitudes),
         "test_mse": curve,
-        "lab_level": lab,
+        "at_ref_amplitude": at_ref,
         "params": {k: sum(p.numel() for p in m.parameters()) for k, m in models.items()},
         "bottleneck_dim": {
             k: int(m.encoder(te.x[:1].to(device)).numel()) for k, m in models.items()
@@ -161,6 +169,7 @@ def run_ae(splits: dict[str, Split], cfg: Config, device: torch.device, retrain:
 def _train_classifier(
     splits, cfg: Config, device, retrain: bool
 ) -> tuple[M.DigitClassifier, float]:
+    torch.manual_seed(cfg.seed)
     clf = M.DigitClassifier().to(device)
     x, y = splits["train"].x.to(device), splits["train"].y.to(device)
     loss_fn = nn.CrossEntropyLoss()
@@ -249,7 +258,7 @@ def run_vae(splits, cfg: Config, device, retrain: bool) -> dict:
     real_probs = torch.softmax(_predict(clf, te.x, device), dim=1)
 
     specs: list[tuple[str, dict, dict]] = [
-        ("vae_legacy", {"head": "legacy"}, {"objective": "legacy", "beta": 1.0}),
+        ("vae_original", {"head": "legacy"}, {"objective": "legacy", "beta": 1.0}),
     ]
     for b in cfg.betas:
         specs.append((f"vae_elbo_b{b:g}", {}, {"objective": "elbo", "beta": b}))
@@ -258,6 +267,7 @@ def run_vae(splits, cfg: Config, device, retrain: bool) -> dict:
     results, histories, arrays = {}, {}, {}
     for name, model_kw, train_kw in specs:
         model_kw = {"latent_dim": cfg.latent_dim} | model_kw
+        torch.manual_seed(cfg.seed)
         m = VAE(**model_kw).to(device)
         histories[name] = _cached(
             name, m, lambda m=m, t=train_kw: train_vae(m, ctr, cva, **t, **kw), retrain
@@ -290,10 +300,16 @@ def _latent_map(m: VAE, te: Split, device, n: int = 15) -> dict[str, np.ndarray]
 # -------------------------------------------------------------------------- run
 
 
-def run_all(cfg: Config | None = None, device: str = "auto", retrain: bool = False) -> dict:
+def run_all(
+    cfg: Config | None = None,
+    device: str = "auto",
+    retrain: bool = False,
+    threads: int | None = None,
+) -> dict:
     cfg = cfg or Config()
     dev = pick_device(device)
-    torch.set_num_threads(3)
+    if threads:
+        torch.set_num_threads(threads)
     print(f"device: {dev}", flush=True)
     splits = load_splits(seed=cfg.seed)
     ae = run_ae(splits, cfg, dev, retrain)

@@ -13,6 +13,7 @@ def main(argv: list[str] | None = None) -> None:
     run.add_argument("--device", default="auto", help="auto | cpu | mps | cuda")
     run.add_argument("--retrain", action="store_true", help="ignore cached checkpoints")
     run.add_argument("--epochs", type=int, default=None, help="override the epoch budget")
+    run.add_argument("--threads", type=int, default=None, help="cap the CPU threads torch uses")
     sub.add_parser("figures", help="redraw docs/figures from results/ and cached arrays")
     sub.add_parser("report", help="build site/index.html and refresh the README tables")
     args = parser.parse_args(argv)
@@ -28,7 +29,7 @@ def main(argv: list[str] | None = None) -> None:
         from .figures import draw_all
 
         cfg = Config() if args.epochs is None else replace(Config(), epochs=args.epochs)
-        run_all(cfg, device=args.device, retrain=args.retrain)
+        run_all(cfg, device=args.device, retrain=args.retrain, threads=args.threads)
         draw_all()
     elif args.cmd == "figures":
         from .figures import draw_all
